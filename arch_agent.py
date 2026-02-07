@@ -2,11 +2,10 @@ import os
 import sys
 import requests
 import google.generativeai as genai
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.panel import Panel
 
 console = Console()
@@ -32,7 +31,7 @@ def search_arch_wiki(query):
     """Finds the best Arch Wiki URL."""
     console.print(f"[dim]🔍 Searching Arch Wiki for: {query}...[/dim]")
     try:
-        results = DDGS().text(f"site:wiki.archlinux.org {query}", max_results=3)
+        results = list(DDGS().text(f"site:wiki.archlinux.org {query}", max_results=3))
         if results:
             return results[0]['href']
     except Exception as e:
