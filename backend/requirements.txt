@@ -1,0 +1,8 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+google-generativeai==0.8.6
+ddgs==9.10.0
+requests==2.32.5
+beautifulsoup4==4.14.3
+markdownify==1.2.2
+pydantic==2.12.5
