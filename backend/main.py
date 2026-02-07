@@ -13,7 +13,7 @@ app = FastAPI(title="Arch Reasoner API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -33,7 +33,7 @@ SAFETY_SETTINGS = [
 
 class QueryRequest(BaseModel):
     query: str
-    url: str = None
+    conversation_history: list = []
 
 class QueryResponse(BaseModel):
     answer: str
@@ -59,27 +59,41 @@ def get_wiki_content(url: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to fetch page: {str(e)}")
 
-def ask_gemini(context: str, user_query: str):
-    model = genai.GenerativeModel('gemini-2.5-flash')
-    
-    prompt = f"""You are an Expert Arch Linux Assistant.
-I will provide you with a full documentation page from the Arch Wiki.
+def ask_gemini(context: str, user_query: str, conversation_history: list):
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # Build conversation context
+        conv_context = ""
+        if conversation_history:
+            conv_context = "\n\nPREVIOUS CONVERSATION:\n"
+            for msg in conversation_history[-6:]:  # Last 3 exchanges
+                conv_context += f"{msg['role'].upper()}: {msg['content']}\n"
+        
+        prompt = f"""You are a friendly, conversational Arch Linux expert helping beginners.
 
-USER QUESTION: "{user_query}"
+IMPORTANT RULES:
+1. If the user's question is vague or could have multiple solutions, ASK CLARIFYING QUESTIONS first
+2. For hardware-specific questions (like GPU drivers), ask what hardware they have
+3. Once you have enough info, give ONLY the exact steps they need - no alternatives, no "if you have X do Y"
+4. Explain each step in simple terms with WHY it's needed
+5. Use the Arch Wiki docs below as reference, but make your answer conversational and personalized
+6. Keep responses concise - break complex tasks into digestible steps
+7. If they answer your question, use that info to give precise instructions{conv_context}
 
-INSTRUCTIONS:
-1. Answer the question using ONLY the provided context.
-2. If the context contains specific commands, list them clearly.
-3. If the context mentions configuration files (like /etc/...), specify them.
-4. Be concise and technical.
-5. Format your response in Markdown.
+CURRENT USER MESSAGE: "{user_query}"
 
-DOCUMENTATION CONTEXT:
+ARCH WIKI REFERENCE:
 {context}
-"""
-    
-    response = model.generate_content(prompt, safety_settings=SAFETY_SETTINGS)
-    return response.text
+
+Remember: Be conversational, ask questions when needed, and give personalized step-by-step guidance."""
+        
+        response = model.generate_content(prompt, safety_settings=SAFETY_SETTINGS)
+        return response.text
+    except Exception as e:
+        if "quota" in str(e).lower() or "429" in str(e):
+            return "⚠️ I've hit my daily API limit. Please try again tomorrow, or set up your own Gemini API key to continue using the service."
+        raise e
 
 @app.get("/")
 def root():
@@ -87,15 +101,16 @@ def root():
 
 @app.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest):
-    if req.url and req.url.startswith('http'):
-        url = req.url
+    # Search Arch Wiki
+    url = search_arch_wiki(req.query)
+    if not url:
+        # If no wiki page found, still try to answer conversationally
+        url = "https://wiki.archlinux.org"
+        wiki_text = "No specific documentation found. Use your general Arch Linux knowledge."
     else:
-        url = search_arch_wiki(req.query)
-        if not url:
-            raise HTTPException(status_code=404, detail="No Arch Wiki results found")
+        wiki_text = get_wiki_content(url)
     
-    wiki_text = get_wiki_content(url)
-    answer = ask_gemini(wiki_text, req.query)
+    answer = ask_gemini(wiki_text, req.query, req.conversation_history)
     
     return QueryResponse(answer=answer, source_url=url)
 

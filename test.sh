@@ -7,7 +7,7 @@ echo ""
 # Check API key
 if [ -z "$GEMINI_API_KEY" ]; then
     echo "⚠️  GEMINI_API_KEY not set. Setting it now..."
-    export GEMINI_API_KEY='AIzaSyCYpjUElsXLZthSxkOWrXitEpeROvETKYU'
+    export GEMINI_API_KEY='your_api_key_here'
 fi
 
 # Test backend

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './App.css'
 
 function App() {
   const [query, setQuery] = useState('')
-  const [url, setUrl] = useState('')
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -13,32 +13,57 @@ function App() {
     e.preventDefault()
     if (!query.trim()) return
 
-    const userMessage = { role: 'user', content: query }
-    setMessages(prev => [...prev, userMessage])
+    const currentQuery = query
+    
+    const userMessage = { role: 'user', content: currentQuery }
+    const newMessages = [...messages, userMessage]
+    setMessages(newMessages)
+    setQuery('')
     setLoading(true)
 
     try {
-      const response = await axios.post('/api/query', {
-        query: query,
-        url: url || null
+      // Build conversation history for context
+      const conversationHistory = newMessages.map(msg => ({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: msg.content
+      }))
+
+      const response = await axios.post('http://localhost:8000/query', {
+        query: currentQuery,
+        conversation_history: conversationHistory
+      }, {
+        timeout: 60000
       })
 
       const botMessage = {
         role: 'assistant',
-        content: response.data.answer,
-        source: response.data.source_url
+        content: response.data.answer || 'No answer received',
+        source: response.data.source_url || ''
       }
       setMessages(prev => [...prev, botMessage])
     } catch (error) {
+      console.error('Error:', error)
+      
+      let errorMsg = 'Failed to get response'
+      if (error.response?.data?.detail) {
+        if (Array.isArray(error.response.data.detail)) {
+          errorMsg = error.response.data.detail.map(e => e.msg).join(', ')
+        } else if (typeof error.response.data.detail === 'string') {
+          errorMsg = error.response.data.detail
+        } else {
+          errorMsg = JSON.stringify(error.response.data.detail)
+        }
+      } else if (error.message) {
+        errorMsg = error.message
+      }
+      
       const errorMessage = {
         role: 'error',
-        content: error.response?.data?.detail || 'Failed to get response. Please try again.'
+        content: errorMsg
       }
       setMessages(prev => [...prev, errorMessage])
     } finally {
       setLoading(false)
-      setQuery('')
-      setUrl('')
     }
   }
 
@@ -46,22 +71,23 @@ function App() {
     <div className="app">
       <div className="container">
         <header className="header">
-          <h1>🐧 Arch Reasoner</h1>
-          <p>AI-Powered Arch Wiki Assistant</p>
+          <h1>⚡ Arch Assistant</h1>
+          <p>Your friendly guide to Arch Linux</p>
         </header>
 
         <div className="chat-container">
           <div className="messages">
             {messages.length === 0 && (
               <div className="welcome">
-                <h2>Welcome to Arch Reasoner!</h2>
-                <p>Ask me anything about Arch Linux. I'll search the official Arch Wiki and provide detailed answers.</p>
+                <h2>Hi! I'm your Arch Linux guide 👋</h2>
+                <p>I'll help you understand Arch Linux in simple terms. Ask me anything, and I'll break it down step-by-step!</p>
                 <div className="examples">
                   <h3>Try asking:</h3>
                   <ul>
                     <li>"How do I install NVIDIA drivers?"</li>
-                    <li>"How to update my system with pacman?"</li>
-                    <li>"Setup Bluetooth on Arch Linux"</li>
+                    <li>"What's the easiest way to update my system?"</li>
+                    <li>"Help me set up Bluetooth"</li>
+                    <li>"Explain what pacman does"</li>
                   </ul>
                 </div>
               </div>
@@ -70,13 +96,32 @@ function App() {
             {messages.map((msg, idx) => (
               <div key={idx} className={`message ${msg.role}`}>
                 {msg.role === 'user' && <div className="avatar">👤</div>}
-                {msg.role === 'assistant' && <div className="avatar">🤖</div>}
+                {msg.role === 'assistant' && <div className="avatar">⚡</div>}
                 {msg.role === 'error' && <div className="avatar">⚠️</div>}
                 
                 <div className="message-content">
                   {msg.role === 'assistant' ? (
                     <>
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          code({node, inline, className, children, ...props}) {
+                            return inline ? (
+                              <code className="inline-code" {...props}>
+                                {children}
+                              </code>
+                            ) : (
+                              <pre className="code-block">
+                                <code className={className} {...props}>
+                                  {children}
+                                </code>
+                              </pre>
+                            )
+                          }
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                       {msg.source && (
                         <div className="source">
                           📚 Source: <a href={msg.source} target="_blank" rel="noopener noreferrer">{msg.source}</a>
@@ -92,7 +137,7 @@ function App() {
 
             {loading && (
               <div className="message assistant">
-                <div className="avatar">🤖</div>
+                <div className="avatar">⚡</div>
                 <div className="message-content">
                   <div className="typing">
                     <span></span>
@@ -105,18 +150,11 @@ function App() {
           </div>
 
           <form className="input-form" onSubmit={handleSubmit}>
-            <input
-              type="text"
-              className="url-input"
-              placeholder="Optional: Direct Arch Wiki URL"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-            />
             <div className="query-row">
               <input
                 type="text"
                 className="query-input"
-                placeholder="Ask about Arch Linux..."
+                placeholder="Ask me anything about Arch Linux..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 disabled={loading}

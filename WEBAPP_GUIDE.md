@@ -12,7 +12,7 @@ A production-ready web application with:
 
 ### 1. Set API Key
 ```bash
-export GEMINI_API_KEY='AIzaSyCYpjUElsXLZthSxkOWrXitEpeROvETKYU'
+export GEMINI_API_KEY='your_api_key_here'
 ```
 
 ### 2. Start the App
